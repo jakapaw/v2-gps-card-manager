@@ -11,6 +11,7 @@ import org.springframework.jdbc.support.rowset.SqlRowSet;
 import org.springframework.stereotype.Component;
 
 import java.sql.ResultSet;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Optional;
@@ -44,9 +45,9 @@ public class GiftcardEventSourcing {
 
     public void pushGiftcardCreated(long cardId, String eventData, long balance, Class<?> event) {
         String sql = String.format("""
-                        INSERT INTO giftcard_event (card_id, version, event_name, balance_change, event_data)
-                        VALUES (%s, %d, '%s', %d, '%s');
-                        """, cardId, 1, event.getSimpleName(), balance, eventData);
+                        INSERT INTO giftcard_event (card_id, version, event_name, balance_change, event_data, created_at)
+                        VALUES (%s, %d, '%s', %d, '%s', '%s');
+                        """, cardId, 1, event.getSimpleName(), balance, eventData, LocalDateTime.now());
         jdbcTemplate.update(sql);
     }
 
@@ -62,9 +63,9 @@ public class GiftcardEventSourcing {
         lastVersion += 1;
 
         String sql = String.format("""
-                        INSERT INTO giftcard_event (card_id, version, event_name, balance_change, event_data)
-                        VALUES (%s, %d, '%s', %d, '%s');
-                        """, cardId, lastVersion, event.getSimpleName(), balanceChange, eventData);
+                        INSERT INTO giftcard_event (card_id, version, event_name, balance_change, event_data, created_at)
+                        VALUES (%s, %d, '%s', %d, '%s', '%s');
+                        """, cardId, lastVersion, event.getSimpleName(), balanceChange, eventData, LocalDateTime.now());
         jdbcTemplate.update(sql);
     }
 }

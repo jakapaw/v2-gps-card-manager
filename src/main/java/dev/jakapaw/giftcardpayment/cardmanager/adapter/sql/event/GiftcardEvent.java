@@ -6,6 +6,8 @@ import lombok.Getter;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
+import java.time.LocalDateTime;
+
 @Entity
 @IdClass(GiftcardEventId.class)
 @AllArgsConstructor
@@ -25,4 +27,5 @@ public class GiftcardEvent {
     @JdbcTypeCode(SqlTypes.JSON)
     private String eventData;
 
+    private LocalDateTime createdAt;
 }

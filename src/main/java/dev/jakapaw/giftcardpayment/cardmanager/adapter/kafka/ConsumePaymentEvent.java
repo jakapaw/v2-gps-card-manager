@@ -76,6 +76,8 @@ public class ConsumePaymentEvent {
                     e.getMessage()
             );
             produceVerifyEvent.publish(returnEvent);
+            e.printStackTrace();
+            return;
         }
 
         VerifyEvent returnEvent = new VerifyEvent(
