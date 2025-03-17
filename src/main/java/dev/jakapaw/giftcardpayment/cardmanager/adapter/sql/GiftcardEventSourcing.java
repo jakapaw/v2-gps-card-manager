@@ -6,6 +6,9 @@ import dev.jakapaw.giftcardpayment.cardmanager.adapter.sql.event.GiftcardEvent;
 import dev.jakapaw.giftcardpayment.cardmanager.adapter.sql.event.GiftcardEventRowMapper;
 import dev.jakapaw.giftcardpayment.cardmanager.adapter.sql.repository.SeriesRepository;
 import dev.jakapaw.giftcardpayment.cardmanager.application.domain.Giftcard;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.rowset.SqlRowSet;
 import org.springframework.stereotype.Component;
@@ -19,6 +22,7 @@ import java.util.Optional;
 @Component
 public class GiftcardEventSourcing {
 
+    private static final Logger log = LoggerFactory.getLogger(GiftcardEventSourcing.class);
     SeriesRepository seriesRepository;
     JdbcTemplate jdbcTemplate;
 
@@ -56,9 +60,15 @@ public class GiftcardEventSourcing {
                 SELECT version FROM giftcard_event WHERE card_id = %s
                 ORDER BY version DESC LIMIT 1;
                 """, cardId);
-        Integer lastVersion = jdbcTemplate.queryForObject(select, Integer.class);
+
+        Integer lastVersion = null;
+        try {
+            lastVersion = jdbcTemplate.queryForObject(select, Integer.class);
+        } catch (Exception ignored) {}
+
         if (lastVersion == null) {
-            throw new NoSuchElementException("No event found for cardId: " + cardId);
+            log.error("No event found for cardId: {}", cardId);
+            return;
         }
         lastVersion += 1;
 

@@ -9,8 +9,18 @@ import dev.jakapaw.giftcardpayment.cardmanager.application.event.PaymentAccepted
 import dev.jakapaw.giftcardpayment.cardmanager.application.event.PaymentDeclined;
 import dev.jakapaw.giftcardpayment.cardmanager.application.port.in.ListenPaymentEvents;
 import dev.jakapaw.giftcardpayment.cardmanager.application.port.in.ManageGiftcard;
+import io.opentelemetry.api.trace.propagation.W3CTraceContextPropagator;
+import io.opentelemetry.context.Context;
+import io.opentelemetry.context.Scope;
+import io.opentelemetry.context.propagation.ContextPropagators;
+import io.opentelemetry.context.propagation.TextMapGetter;
 import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.messaging.handler.annotation.Headers;
 import org.springframework.stereotype.Component;
+
+import java.nio.charset.StandardCharsets;
+import java.util.Map;
+import java.util.NoSuchElementException;
 
 @Component
 public class ConsumePaymentEvent {
@@ -31,8 +41,14 @@ public class ConsumePaymentEvent {
     }
 
     @KafkaListener(topics = "giftcard.payment", groupId = "payment")
-    public void listenPaymentEvent(String payload) {
-        try {
+    public void listenPaymentEvent(String payload, @Headers Map<String, byte[]> headers) {
+        ContextPropagators contextPropagators = ContextPropagators.create(W3CTraceContextPropagator.getInstance());
+        KafkaHeaderGetter kafkaHeaderGetter = new KafkaHeaderGetter();
+
+        Context extractedContext = contextPropagators.getTextMapPropagator()
+                .extract(Context.current(), headers, kafkaHeaderGetter);
+
+        try (Scope scope = extractedContext.makeCurrent()) {
             JsonNode message = om.readTree(payload);
             JsonNode eventData = om.readTree(message.get("eventData").asText());
             String eventName = message.get("eventName").asText();
@@ -49,45 +65,75 @@ public class ConsumePaymentEvent {
     }
 
     @KafkaListener(topics = "giftcard.verify", groupId = "verifyIn")
-    public void listenVerifyEvent(String payload) {
-        VerifyEvent event;
-        try{
-            event = om.readValue(payload, VerifyEvent.class);
-        } catch (JsonProcessingException e) {
-            throw new RuntimeException(e);
-        }
-        VerifyGiftcardCommand command = new VerifyGiftcardCommand(
-                event.invoiceId(),
-                event.cardId(),
-                event.totalBilled(),
-                event.lastBalance(),
-                event.isVerified()
-        );
+    public void listenVerifyEvent(String payload, @Headers Map<String, byte[]> headers) {
+        ContextPropagators contextPropagators = ContextPropagators.create(W3CTraceContextPropagator.getInstance());
+        KafkaHeaderGetter kafkaHeaderGetter = new KafkaHeaderGetter();
 
-        try {
-            manageGiftcardDefault.verifyGiftcard(command);
-        } catch (IllegalArgumentException e) {
+        Context extractedContext = contextPropagators.getTextMapPropagator()
+                .extract(Context.current(), headers, kafkaHeaderGetter);
+
+        try (Scope scope = extractedContext.makeCurrent()) {
+            VerifyEvent event;
+            try{
+                event = om.readValue(payload, VerifyEvent.class);
+            } catch (JsonProcessingException e) {
+                throw new RuntimeException(e);
+            }
+            VerifyGiftcardCommand command = new VerifyGiftcardCommand(
+                    event.invoiceId(),
+                    event.cardId(),
+                    event.totalBilled(),
+                    event.lastBalance(),
+                    event.isVerified()
+            );
+
+            try {
+                manageGiftcardDefault.verifyGiftcard(command);
+            } catch (IllegalArgumentException | NoSuchElementException e) {
+                VerifyEvent returnEvent = new VerifyEvent(
+                        event.invoiceId(),
+                        event.cardId(),
+                        event.totalBilled(),
+                        event.lastBalance(),
+                        false,
+                        e.getMessage()
+                );
+                produceVerifyEvent.publish(returnEvent);
+                return;
+            }
+
             VerifyEvent returnEvent = new VerifyEvent(
                     event.invoiceId(),
                     event.cardId(),
                     event.totalBilled(),
                     event.lastBalance(),
-                    false,
-                    e.getMessage()
+                    true,
+                    null
             );
             produceVerifyEvent.publish(returnEvent);
-            e.printStackTrace();
-            return;
+        }
+    }
+
+    private static class KafkaHeaderGetter implements TextMapGetter<Map<String, byte[]>> {
+
+        @Override
+        public Iterable<String> keys(Map<String, byte[]> carrier) {
+            return carrier.keySet();
         }
 
-        VerifyEvent returnEvent = new VerifyEvent(
-                event.invoiceId(),
-                event.cardId(),
-                event.totalBilled(),
-                event.lastBalance(),
-                true,
-                null
-        );
-        produceVerifyEvent.publish(returnEvent);
+        @Override
+        public String get(Map<String, byte[]> carrier, String key) {
+            if (carrier == null) {
+                throw new IllegalArgumentException("Carrier must not be null");
+            }
+            if (carrier.containsKey(key))
+                try {
+                    return new String(carrier.get(key), StandardCharsets.UTF_8);
+                } catch (Exception e) {
+                    return null;
+                }
+            else
+                return null;
+        }
     }
 }

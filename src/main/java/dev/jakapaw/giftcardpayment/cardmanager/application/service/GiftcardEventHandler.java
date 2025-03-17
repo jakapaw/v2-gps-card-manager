@@ -12,6 +12,8 @@ import dev.jakapaw.giftcardpayment.cardmanager.application.port.in.ListenPayment
 import dev.jakapaw.giftcardpayment.cardmanager.application.port.in.ListenVerificationEvent;
 import org.springframework.stereotype.Service;
 
+import java.util.NoSuchElementException;
+
 @Service
 public class GiftcardEventHandler implements ListenPaymentEvents, ListenVerificationEvent {
 
