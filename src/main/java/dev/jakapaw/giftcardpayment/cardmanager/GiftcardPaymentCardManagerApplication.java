@@ -10,4 +10,5 @@ public class GiftcardPaymentCardManagerApplication {
 		SpringApplication.run(GiftcardPaymentCardManagerApplication.class, args);
 	}
 
+
 }

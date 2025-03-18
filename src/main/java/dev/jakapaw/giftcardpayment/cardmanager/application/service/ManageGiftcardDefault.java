@@ -57,8 +57,10 @@ public class ManageGiftcardDefault implements ManageGiftcard {
 
     @Override
     public void verifyGiftcard(VerifyGiftcardCommand command) {
-        giftcardEventSourcing.rebuildState(command.cardId()).orElseThrow()
-                .verifyCardId(command.cardId())
-                .verifySufficeBalance(command.totalBilled());
+        Giftcard giftcard = giftcardEventSourcing.rebuildState(command.cardId());
+        if (giftcard == null) {
+            throw new NullPointerException("Giftcard rebuild state failed");
+        }
+        giftcard.verifyCardId(command.cardId()).verifySufficeBalance(command.totalBilled());
     }
 }

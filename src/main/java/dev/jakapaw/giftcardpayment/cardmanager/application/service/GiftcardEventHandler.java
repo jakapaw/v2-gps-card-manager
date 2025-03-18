@@ -27,7 +27,12 @@ public class GiftcardEventHandler implements ListenPaymentEvents, ListenVerifica
 
     @Override
     public void on(PaymentAccepted event) {
-        Giftcard giftcard = giftcardEventSourcing.rebuildState(event.cardId()).orElseThrow();
+        Giftcard giftcard = giftcardEventSourcing.rebuildState(event.cardId());
+
+        if (giftcard == null) {
+            throw new NullPointerException("giftcard rebuild state failed");
+        }
+
         JsonNode seller = event.paymentInfo().path("seller");
         long totalBill = seller.get("totalBill").asLong();
         try {
