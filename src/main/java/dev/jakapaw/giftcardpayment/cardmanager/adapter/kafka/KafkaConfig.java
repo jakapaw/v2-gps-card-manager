@@ -5,6 +5,7 @@ import org.apache.kafka.clients.admin.AdminClientConfig;
 import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.producer.ProducerConfig;
+import org.apache.kafka.common.config.TopicConfig;
 import org.apache.kafka.common.serialization.LongDeserializer;
 import org.apache.kafka.common.serialization.LongSerializer;
 import org.apache.kafka.common.serialization.StringDeserializer;
@@ -60,18 +61,27 @@ public class KafkaConfig {
         return new KafkaAdmin(configs);
     }
 
-    @Bean
-    public NewTopic giftcardVerify() {
-        return new NewTopic("giftcard.verify", 2, (short) 1);
+    Map<String, String> generalTopicConfig() {
+        return Map.of(
+                TopicConfig.RETENTION_BYTES_CONFIG, "100000000"
+        );
     }
 
     @Bean
-    public NewTopic giftcardPayment() {
-        return new NewTopic("giftcard.payment", 2, (short) 1);
+    public NewTopic giftcardVerify() {
+        return new NewTopic("giftcard.verify", 2, (short) 1)
+                .configs(generalTopicConfig());
     }
 
     @Bean
     public NewTopic giftcardVerified() {
-        return new NewTopic("giftcard.verified", 2, (short) 1);
+        return new NewTopic("giftcard.verified", 2, (short) 1)
+                .configs(generalTopicConfig());
+    }
+
+    @Bean
+    public NewTopic paymentEvent() {
+        return new NewTopic("giftcard.payment", 2, (short) 1)
+                .configs(generalTopicConfig());
     }
 }
