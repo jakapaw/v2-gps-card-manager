@@ -1,30 +1,20 @@
 package dev.jakapaw.giftcardpayment.cardmanager.adapter.sql;
 
-import dev.jakapaw.giftcardpayment.cardmanager.adapter.sql.entity.GiftcardEntity;
-import dev.jakapaw.giftcardpayment.cardmanager.adapter.sql.entity.SeriesEntity;
 import dev.jakapaw.giftcardpayment.cardmanager.adapter.sql.event.GiftcardEvent;
-import dev.jakapaw.giftcardpayment.cardmanager.adapter.sql.event.GiftcardEventRowMapper;
+import dev.jakapaw.giftcardpayment.cardmanager.adapter.sql.event.GiftcardEventSnapshot;
 import dev.jakapaw.giftcardpayment.cardmanager.adapter.sql.repository.GiftcardEventRepository;
+import dev.jakapaw.giftcardpayment.cardmanager.adapter.sql.repository.GiftcardEventSnapshotRepository;
 import dev.jakapaw.giftcardpayment.cardmanager.adapter.sql.repository.SeriesRepository;
 import dev.jakapaw.giftcardpayment.cardmanager.application.domain.Giftcard;
 import jakarta.persistence.EntityManager;
-import jakarta.persistence.NamedNativeQuery;
-import jakarta.persistence.PersistenceContext;
+import org.hibernate.Session;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.context.event.ApplicationReadyEvent;
-import org.springframework.context.event.EventListener;
-import org.springframework.core.io.ClassPathResource;
-import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.datasource.init.ResourceDatabasePopulator;
-import org.springframework.jdbc.support.rowset.SqlRowSet;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
-import java.nio.charset.StandardCharsets;
-import java.sql.ResultSet;
 import java.time.LocalDateTime;
-import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Optional;
 
@@ -33,14 +23,18 @@ public class GiftcardEventSourcing {
 
     private static final Logger log = LoggerFactory.getLogger(GiftcardEventSourcing.class);
 
-    JdbcTemplate jdbcTemplate;
+    EntityManager entityManager;
     SeriesRepository seriesRepository;
     GiftcardEventRepository eventRepository;
+    GiftcardEventSnapshotRepository snapshotRepository;
 
-    public GiftcardEventSourcing(JdbcTemplate jdbcTemplate, SeriesRepository seriesRepository, GiftcardEventRepository eventRepository) {
-        this.jdbcTemplate = jdbcTemplate;
+    public GiftcardEventSourcing(EntityManager entityManager, SeriesRepository seriesRepository,
+                                 GiftcardEventRepository eventRepository,
+                                 GiftcardEventSnapshotRepository snapshotRepository) {
+        this.entityManager = entityManager;
         this.seriesRepository = seriesRepository;
         this.eventRepository = eventRepository;
+        this.snapshotRepository = snapshotRepository;
     }
 
     public void pushGiftcardCreated(long cardId, String eventData, long balance, Class<?> event) {
@@ -55,8 +49,16 @@ public class GiftcardEventSourcing {
         eventRepository.save(newEvent);
     }
 
+    @Transactional
     public void pushEvent(long cardId, String eventData, long balanceChange, Class<?> event) {
-        Integer lastVersion = eventRepository.getLastVersion(cardId);
+        Optional<GiftcardEventSnapshot> snapshot = snapshotRepository.findByCardId(cardId);
+        Integer lastVersion;
+
+        if (snapshot.isPresent()) {
+            lastVersion = snapshot.get().getLastVersion();
+        } else {
+            lastVersion = eventRepository.getLastVersion(cardId);
+        }
 
         if (lastVersion == null) {
             log.error("No event found for cardId: {}", cardId);
@@ -75,8 +77,46 @@ public class GiftcardEventSourcing {
         eventRepository.save(newEvent);
     }
 
+    @Transactional
     public Giftcard rebuildState(Long cardId) {
-        Long currentBalance = eventRepository.getCurrentBalance(cardId);
-        return new Giftcard(cardId, currentBalance);
+        Optional<GiftcardEventSnapshot> snapshot = snapshotRepository.findByCardId(cardId);
+
+        Long snapBalance = 0L;
+        Integer snapVersion = 0;
+        Long calculatedBalance = 0L;
+        if (snapshot.isPresent()) {
+            snapBalance = snapshot.get().getBalance();
+            snapVersion = snapshot.get().getLastVersion();
+
+            calculatedBalance = (Long) eventRepository.callRebuildState(cardId, snapVersion).get("current_balance");
+            calculatedBalance += snapBalance;
+
+            Integer lastVersion = (Integer) eventRepository.callRebuildState(cardId, snapVersion).get("last_version");
+            isCreateSnapshot(cardId, calculatedBalance, lastVersion );
+        } else {
+            Long currentBalance = (Long) eventRepository.callRebuildState(cardId, snapVersion).get("current_balance");
+            Integer lastVersion = (Integer) eventRepository.callRebuildState(cardId, snapVersion).get("last_version");
+            // when rebuild balance from beginning, we calculate balance from initialBalance - spending
+            calculatedBalance = currentBalance;
+            if (currentBalance != null && lastVersion != null)
+                isCreateSnapshot(cardId, currentBalance, lastVersion);
+            else
+                log.error("No event found for cardId: {}", cardId);
+        }
+        return new Giftcard(cardId, calculatedBalance);
+    }
+
+    public void isCreateSnapshot(Long cardId, Long balance, Integer version) {
+        if (version % 5 == 4) {
+            Session session = entityManager.unwrap(Session.class);
+            snapshotRepository.findByCardId(cardId)
+                    .ifPresentOrElse((el -> {
+                        el.setBalance(balance);
+                        el.setLastVersion(version);
+                        snapshotRepository.save(el);
+                    }), () -> {
+                        snapshotRepository.save(new GiftcardEventSnapshot(cardId, version, balance));
+                    });
+        }
     }
 }

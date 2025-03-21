@@ -11,6 +11,7 @@ import dev.jakapaw.giftcardpayment.cardmanager.application.event.VerificationDon
 import dev.jakapaw.giftcardpayment.cardmanager.application.port.in.ListenPaymentEvents;
 import dev.jakapaw.giftcardpayment.cardmanager.application.port.in.ListenVerificationEvent;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.NoSuchElementException;
 
@@ -25,6 +26,7 @@ public class GiftcardEventHandler implements ListenPaymentEvents, ListenVerifica
         this.om = om;
     }
 
+    @Transactional
     @Override
     public void on(PaymentAccepted event) {
         Giftcard giftcard = giftcardEventSourcing.rebuildState(event.cardId());
@@ -46,6 +48,7 @@ public class GiftcardEventHandler implements ListenPaymentEvents, ListenVerifica
         }
     }
 
+    @Transactional
     @Override
     public void on(PaymentDeclined event) {
         try {
@@ -59,6 +62,7 @@ public class GiftcardEventHandler implements ListenPaymentEvents, ListenVerifica
         }
     }
 
+    @Transactional
     @Override
     public void on(VerificationDone event) {
         try {
