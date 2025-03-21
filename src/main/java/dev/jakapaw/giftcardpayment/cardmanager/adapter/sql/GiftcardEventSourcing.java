@@ -15,6 +15,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Optional;
 
@@ -84,18 +85,25 @@ public class GiftcardEventSourcing {
         Long snapBalance = 0L;
         Integer snapVersion = 0;
         Long calculatedBalance = 0L;
+
         if (snapshot.isPresent()) {
             snapBalance = snapshot.get().getBalance();
             snapVersion = snapshot.get().getLastVersion();
 
-            calculatedBalance = (Long) eventRepository.callRebuildState(cardId, snapVersion).get("current_balance");
+            Map<String, Object> rebuildStateRow = eventRepository.callRebuildState(cardId, snapVersion);
+
+            calculatedBalance = rebuildStateRow.get("current_balance") != null
+                    ? (Long) rebuildStateRow.get("current_balance")
+                    : 0L;
             calculatedBalance += snapBalance;
 
-            Integer lastVersion = (Integer) eventRepository.callRebuildState(cardId, snapVersion).get("last_version");
+            Integer lastVersion = (Integer) rebuildStateRow.get("last_version");
             isCreateSnapshot(cardId, calculatedBalance, lastVersion );
+
         } else {
-            Long currentBalance = (Long) eventRepository.callRebuildState(cardId, snapVersion).get("current_balance");
-            Integer lastVersion = (Integer) eventRepository.callRebuildState(cardId, snapVersion).get("last_version");
+            Map<String, Object> rebuildStateRow = eventRepository.callRebuildState(cardId, snapVersion);
+            Long currentBalance = (Long) rebuildStateRow.get("current_balance");
+            Integer lastVersion = (Integer) rebuildStateRow.get("last_version");
             // when rebuild balance from beginning, we calculate balance from initialBalance - spending
             calculatedBalance = currentBalance;
             if (currentBalance != null && lastVersion != null)
@@ -103,11 +111,12 @@ public class GiftcardEventSourcing {
             else
                 log.error("No event found for cardId: {}", cardId);
         }
+
         return new Giftcard(cardId, calculatedBalance);
     }
 
     public void isCreateSnapshot(Long cardId, Long balance, Integer version) {
-        if (version % 5 == 4) {
+        if (version % 5 == 0) {
             Session session = entityManager.unwrap(Session.class);
             snapshotRepository.findByCardId(cardId)
                     .ifPresentOrElse((el -> {

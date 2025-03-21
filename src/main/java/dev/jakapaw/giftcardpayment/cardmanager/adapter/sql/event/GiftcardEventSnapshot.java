@@ -1,10 +1,7 @@
 package dev.jakapaw.giftcardpayment.cardmanager.adapter.sql.event;
 
 import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+import lombok.*;
 import org.hibernate.annotations.Cache;
 import org.hibernate.annotations.CacheConcurrencyStrategy;
 import org.hibernate.annotations.NaturalId;
@@ -14,6 +11,7 @@ import org.hibernate.annotations.NaturalId;
 @NoArgsConstructor
 @Getter
 @Setter
+@ToString
 public class GiftcardEventSnapshot {
 
     @Id

@@ -14,9 +14,11 @@ DECLARE
 	snap_balance INT8;
 	snap_version INT4;
 BEGIN
-	SELECT ges.balance, ges.last_version INTO snap_balance,snap_version FROM giftcard_event_snapshot ges WHERE ges.card_id = $1;
-	SELECT
-        COALESCE(snap_balance, 0) + SUM(balance_change), MAX("version") INTO current_balance,last_version
-    FROM giftcard_event WHERE card_id = $1 AND "version" > COALESCE(snap_version, 0);
+	WITH rowset1 AS(
+		SELECT
+	        SUM(balance_change) as balance_change, MAX("version") as "version"
+	    FROM giftcard_event WHERE card_id = $1 AND "version" > COALESCE(snap_version, 0)
+	)
+	SELECT COALESCE(balance_change, 0) INTO current_balance FROM rowset1;
 END;
 ';
