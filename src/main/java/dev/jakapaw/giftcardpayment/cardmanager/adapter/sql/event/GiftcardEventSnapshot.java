@@ -7,6 +7,9 @@ import org.hibernate.annotations.CacheConcurrencyStrategy;
 import org.hibernate.annotations.NaturalId;
 
 @Entity
+@Table(uniqueConstraints = {
+        @UniqueConstraint(name = "card_id_unique", columnNames = { "cardId" })
+})
 @AllArgsConstructor
 @NoArgsConstructor
 @Getter
@@ -22,8 +25,8 @@ public class GiftcardEventSnapshot {
     private Integer lastVersion;
     private Long balance;
 
-    public GiftcardEventSnapshot(Long cardId, Integer lastVersion, Long balance) {
-        this.cardId = cardId;
+    public GiftcardEventSnapshot(Long snapshotId, Integer lastVersion, Long balance) {
+        this.snapshotId = snapshotId;
         this.lastVersion = lastVersion;
         this.balance = balance;
     }
