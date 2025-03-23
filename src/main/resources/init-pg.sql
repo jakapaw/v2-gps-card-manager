@@ -19,6 +19,6 @@ BEGIN
 	        SUM(balance_change) as balance_change, MAX("version") as "version"
 	    FROM giftcard_event WHERE card_id = $1 AND "version" > COALESCE(snap_version, 0)
 	)
-	SELECT COALESCE(balance_change, 0) INTO current_balance FROM rowset1;
+	SELECT COALESCE(balance_change, 0), "version" INTO current_balance, last_version FROM rowset1;
 END;
 ';

@@ -56,7 +56,9 @@ public class GiftcardEventSourcing {
         Integer lastVersion;
 
         if (snapshot.isPresent()) {
-            lastVersion = snapshot.get().getLastVersion();
+            Map<String, Object> rebuildStateRow = eventRepository
+                    .callRebuildState(cardId, snapshot.get().getLastVersion());
+            lastVersion = (Integer) rebuildStateRow.get("last_version");
         } else {
             lastVersion = eventRepository.getLastVersion(cardId);
         }
@@ -80,52 +82,54 @@ public class GiftcardEventSourcing {
 
     @Transactional
     public Giftcard rebuildState(Long cardId) {
-        Optional<GiftcardEventSnapshot> snapshot = snapshotRepository.findByCardId(cardId);
+        Optional<GiftcardEventSnapshot> snapshotOptional = snapshotRepository.findByCardId(cardId);
 
-        Long snapBalance = 0L;
-        Integer snapVersion = 0;
         Long calculatedBalance = 0L;
 
-        if (snapshot.isPresent()) {
-            snapBalance = snapshot.get().getBalance();
-            snapVersion = snapshot.get().getLastVersion();
+        if (snapshotOptional.isPresent()) {
+            GiftcardEventSnapshot snapshot = snapshotOptional.get();
+            Long snapBalance = snapshot.getBalance();
+            Integer snapVersion = snapshot.getLastVersion();
 
             Map<String, Object> rebuildStateRow = eventRepository.callRebuildState(cardId, snapVersion);
+            Integer lastVersion = (Integer) rebuildStateRow.get("last_version");
 
             calculatedBalance = rebuildStateRow.get("current_balance") != null
                     ? (Long) rebuildStateRow.get("current_balance")
                     : 0L;
             calculatedBalance += snapBalance;
 
-            Integer lastVersion = (Integer) rebuildStateRow.get("last_version");
-            isCreateSnapshot(cardId, calculatedBalance, lastVersion );
+            isCreateSnapshot(snapshot, lastVersion, calculatedBalance);
 
         } else {
-            Map<String, Object> rebuildStateRow = eventRepository.callRebuildState(cardId, snapVersion);
+            // rebuild state from beginning
+            Map<String, Object> rebuildStateRow = eventRepository.callRebuildState(cardId, 0);
             Long currentBalance = (Long) rebuildStateRow.get("current_balance");
             Integer lastVersion = (Integer) rebuildStateRow.get("last_version");
-            // when rebuild balance from beginning, we calculate balance from initialBalance - spending
+
+            // when rebuild state from beginning, we calculate balance by initialBalance - allSpending
             calculatedBalance = currentBalance;
-            if (currentBalance != null && lastVersion != null)
-                isCreateSnapshot(cardId, currentBalance, lastVersion);
+
+            if (currentBalance != null && lastVersion != null) {
+                // save new giftcard event snapshot
+                GiftcardEventSnapshot newSnapshot = new GiftcardEventSnapshot();
+                newSnapshot.setBalance(currentBalance);
+                newSnapshot.setLastVersion(lastVersion);
+                newSnapshot.setCardId(cardId);
+                isCreateSnapshot(newSnapshot, lastVersion, currentBalance);
+            }
             else
-                log.error("No event found for cardId: {}", cardId);
+                log.error("No giftcard event found for cardId: {}", cardId);
         }
 
         return new Giftcard(cardId, calculatedBalance);
     }
 
-    public void isCreateSnapshot(Long cardId, Long balance, Integer version) {
-        if (version % 5 == 0) {
-            Session session = entityManager.unwrap(Session.class);
-            snapshotRepository.findByCardId(cardId)
-                    .ifPresentOrElse((el -> {
-                        el.setBalance(balance);
-                        el.setLastVersion(version);
-                        snapshotRepository.save(el);
-                    }), () -> {
-                        snapshotRepository.save(new GiftcardEventSnapshot(cardId, version, balance));
-                    });
+    public void isCreateSnapshot(GiftcardEventSnapshot snapshot, Integer newVersion, Long newBalance) {
+        if (newVersion % 5 == 0) {
+            snapshot.setLastVersion(newVersion);
+            snapshot.setBalance(newBalance);
+            snapshotRepository.save(snapshot);
         }
     }
 }
